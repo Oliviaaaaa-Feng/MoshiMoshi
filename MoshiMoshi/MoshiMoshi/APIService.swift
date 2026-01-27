@@ -11,7 +11,7 @@ import Foundation
 class APIService {
     static let shared = APIService()
     
-    private let baseURL = "http://localhost:3000/api/reservations"
+    private let baseURL = "https://moshi-moshi-sand.vercel.app/api/reservations"
     
     func sendReservation(request: ReservationRequest) async throws -> BackendResponse {
         guard let url = URL(string: baseURL) else {

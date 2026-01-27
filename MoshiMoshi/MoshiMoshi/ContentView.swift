@@ -7,12 +7,10 @@
 
 import SwiftUI
 
-import SwiftUI
-
-import SwiftUI
 
 struct ContentView: View {
     @StateObject var viewModel = ReservationViewModel()
+    @FocusState private var isFocused: Bool
     
     var body: some View {
         ZStack {
@@ -131,6 +129,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
         }
         .sheet(isPresented: $viewModel.showProfileSheet) {
@@ -161,6 +160,13 @@ struct OmakaseTextField: View {
         .padding()
         .background(Color.white)
         .cornerRadius(12)
+    }
+}
+
+
+extension View {
+    func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 
