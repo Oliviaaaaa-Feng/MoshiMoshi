@@ -12,13 +12,35 @@ import SwiftUI
 struct ReservationRequest: Codable {
     var restaurantName: String = ""
     var restaurantPhone: String = ""
-    
     var customerName: String = ""
     var customerPhone: String = ""
     
     var dateTime: Date = Date()
+    
+    var reservationDate: String = ""
+    var reservationTime: String = ""
+    
     var partySize: Int = 2
     var specialRequests: String = ""
+    
+    // Mapping keys to match Python/Next.js snake_case
+    enum CodingKeys: String, CodingKey {
+        case restaurantName = "restaurant_name"
+        case restaurantPhone = "restaurant_phone"
+        case customerName = "customer_name"
+        case customerPhone = "customer_phone"
+        case reservationDate = "reservation_date"
+        case reservationTime = "reservation_time"
+        case partySize = "party_size"
+        case specialRequests = "special_requests"
+    }
+}
+
+
+struct BackendResponse: Codable {
+    let success: Bool?
+    let message: String?
+    let error: String?
 }
 
 
