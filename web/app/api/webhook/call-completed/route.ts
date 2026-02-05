@@ -1,78 +1,85 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import type { CallCompletedWebhook, ReservationStatus } from '@/lib/types/reservation'
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
-// POST /api/webhook/call-completed
-// This endpoint receives the post-call webhook from ElevenLabs
-// when the call ends and analysis is complete
+// Define the interface
+interface ElevenLabsWebhook {
+  type: string;
+  conversation_id: string; // call_id
+  data: {
+    analysis: {
+      data_collection_results: {
+        reservation_status?: 'confirmed' | 'unavailable' | 'rejected';
+        alternative_times?: string;
+        rejection_reason?: string;
+        restaurant_notes?: string;
+      };
+      call_successful: string;
+    };
+    conversation_initiation_client_data?: {
+      dynamic_variables?: {
+        reservation_id?: string;
+      };
+    };
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const body: CallCompletedWebhook = await request.json()
+    const body: ElevenLabsWebhook = await request.json();
 
-    console.log('[Webhook] Received call completion:', JSON.stringify(body, null, 2))
+    console.log('[Webhook] Received payload:', JSON.stringify(body, null, 2));
 
-    // Validate required fields
-    if (!body.reservation_id) {
-      return NextResponse.json(
-        { error: 'Missing reservation_id' },
-        { status: 400 }
-      )
+    // Retrieve reservation_id
+    const reservationId = body.data?.conversation_initiation_client_data?.dynamic_variables?.reservation_id;
+
+    if (!reservationId) {
+      console.error('[Webhook] Missing reservation_id in dynamic_variables');
+      return NextResponse.json({ error: 'Missing reservation_id' }, { status: 400 });
     }
 
-    const supabase = await createClient()
+    const supabase = await createClient();
 
-    // Determine the new status based on call result
-    // Valid statuses: 'pending', 'calling', 'completed', 'failed'
-    let newStatus: ReservationStatus = 'completed'
+    // Get the data collection results
+    const results = body.data.analysis.data_collection_results || {};
+
+    // Map the string status to a boolean
+    const isConfirmed = results.reservation_status === 'confirmed';
     
-    if (body.status === 'failed' || body.status === 'no_answer') {
-      newStatus = 'failed'
-    }
-    // Use 'completed' for both confirmed and rejected reservations
-    // The actual confirmation status is stored in booking_confirmed field
+    // Set internal status to 'completed'
+    const newStatus = 'completed'; 
 
-    // Update the reservation with call results
+    // Database Update
     const { data, error } = await supabase
       .from('reservations')
       .update({
         status: newStatus,
-        call_id: body.call_sid,
-        booking_confirmed: body.analysis?.reservation_confirmed ?? false,
-        confirmation_details: body.analysis ? {
-          restaurant_response: body.analysis.restaurant_response,
-          confirmed_date: body.analysis.confirmed_date,
-          confirmed_time: body.analysis.confirmed_time,
-          notes: body.analysis.notes,
-          duration: body.duration,
-          recording_url: body.recording_url
-        } : null,
-        failure_reason: newStatus === 'failed' ? (body.status || 'Call failed') : null,
-        call_ended_at: new Date().toISOString()
+        call_id: body.conversation_id,
+        booking_confirmed: isConfirmed,
+        failure_reason: results.rejection_reason || null,
+        confirmation_details: {
+          status: results.reservation_status,
+          alternative_times: results.alternative_times,
+          notes: results.restaurant_notes,
+          raw_analysis: results
+        },
+
+        updated_at: new Date().toISOString()
       })
-      .eq('id', body.reservation_id)
+      .eq('id', reservationId)
       .select()
-      .single()
+      .single();
 
     if (error) {
-      console.error('[Webhook] Database error:', error)
-      return NextResponse.json(
-        { error: 'Failed to update reservation' },
-        { status: 500 }
-      )
+      console.error('[Webhook] Database error:', error);
+      return NextResponse.json({ error: 'Failed to update reservation' }, { status: 500 });
     }
 
-    console.log(`[Webhook] Reservation ${body.reservation_id} updated to status: ${newStatus}`)
+    console.log(`[Webhook] Reservation ${reservationId} updated. Confirmed: ${isConfirmed}`);
 
-    return NextResponse.json({
-      success: true,
-      reservation: data
-    })
+    return NextResponse.json({ success: true, data });
 
   } catch (error) {
-    console.error('[Webhook] Error processing webhook:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('[Webhook] Error processing webhook:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
