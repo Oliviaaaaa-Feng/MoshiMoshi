@@ -16,21 +16,23 @@ export async function POST(request: NextRequest) {
 
     // Construct mock webhook payload
     const mockWebhook = {
-      call_sid: `twilio_call_${Date.now()}`,
-      reservation_id,
-      status: success ? 'completed' : 'failed',
-      duration: success ? Math.floor(Math.random() * 120) + 30 : 0,
-      recording_url: success ? `https://example.com/recordings/${reservation_id}.mp3` : undefined,
-      analysis: success ? {
-        reservation_confirmed: true,
-        confirmed_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        confirmed_time: '19:00',
-        restaurant_response: 'はい、ご予約承りました。12月25日19時、2名様でお待ちしております。',
-        notes: 'Window seat requested and confirmed'
-      } : {
-        reservation_confirmed: false,
-        restaurant_response: '申し訳ございません。その日時は満席となっております。',
-        notes: 'Restaurant fully booked'
+      type: "post_call_transcription",
+      conversation_id: `mock_call_${Date.now()}`,
+      data: {
+        analysis: {
+          call_successful: "success",
+          data_collection_results: {
+            reservation_status: success ? 'confirmed' : 'rejected', 
+            alternative_times: success ? "" : "Tomorrow at 6 PM", 
+            rejection_reason: success ? "" : "No tables available",
+            restaurant_notes: success ? "Outdoor seating." : ""
+          }
+        },
+        conversation_initiation_client_data: {
+          dynamic_variables: {
+            reservation_id: reservation_id
+          }
+        }
       }
     }
 
@@ -42,19 +44,20 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(mockWebhook)
     })
 
+    if (!webhookResponse.ok) {
+        throw new Error(`Webhook endpoint returned ${webhookResponse.status}`)
+    }
+
     const result = await webhookResponse.json()
 
     return NextResponse.json({
-      message: 'Mock webhook sent',
-      webhook_payload: mockWebhook,
-      webhook_response: result
+      message: 'Mock webhook sent successfully',
+      sent_payload: mockWebhook,
+      receiver_response: result
     })
 
   } catch (error) {
     console.error('Error in mock endpoint:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }
