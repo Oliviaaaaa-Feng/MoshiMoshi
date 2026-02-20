@@ -7,11 +7,17 @@
 
 
 import Foundation
+import Supabase
 
 class APIService {
     static let shared = APIService()
     
     private let baseURL = "https://moshi-moshi-sand.vercel.app/api/reservations"
+    
+    let supabase = SupabaseClient(
+        supabaseURL: URL(string: "https://zzxkytfwfjfbtlimqfda.supabase.co")!,
+        supabaseKey: "sb_publishable_URh-HcJdory74KR3-_CU4w_uj2xver2"
+    )
     
     func sendReservation(request: ReservationRequest) async throws -> CreateReservationResponse {
         guard let url = URL(string: baseURL) else {

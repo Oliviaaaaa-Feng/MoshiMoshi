@@ -46,10 +46,37 @@ struct ReservationData: Codable, Identifiable {
     let failureReason: String?
     
     struct Details: Codable {
-        let notes: String?
-        let alternative_times: String?
-        let status: String?
+        let analysis: Analysis?
+            
+        struct Analysis: Codable {
+            let transcriptSummary: String?
+            let dataCollectionResults: DataCollectionResults?
+                
+            enum CodingKeys: String, CodingKey {
+                case transcriptSummary = "transcript_summary"
+                case dataCollectionResults = "data_collection_results"
+            }
+        }
+            
+        struct DataCollectionResults: Codable {
+            let reservationStatus: ValueWrapper?
+            let requiredAction: ValueWrapper?
+            let rejectionReason: ValueWrapper?
+            let restaurantNotes: ValueWrapper?
+                
+            enum CodingKeys: String, CodingKey {
+                case reservationStatus = "reservation_status"
+                case requiredAction = "required_action"
+                case rejectionReason = "rejection_reason"
+                case restaurantNotes = "restaurant_notes"
+            }
+        }
+            
+        struct ValueWrapper: Codable {
+            let value: String?
+        }
     }
+    
     let confirmationDetails: Details?
     
     enum CodingKeys: String, CodingKey {
@@ -71,13 +98,17 @@ struct CreateReservationResponse: Codable {
 enum ReservationStatus: String, Codable {
     case pending = "Calling..."
     case confirmed = "Confirmed"
+    case actionRequired = "Action Required"
     case failed = "Failed"
+    case incomplete = "Incomplete"
     
     var color: Color {
         switch self {
         case .pending: return .gray
         case .confirmed: return .sushiWasabi
-        case .failed: return .sushiTuna
+        case .actionRequired: return .sushiTuna
+        case .failed: return .black
+        case .incomplete: return .yellow
         }
     }
     
@@ -85,7 +116,9 @@ enum ReservationStatus: String, Codable {
         switch self {
         case .pending: return "phone.connection"
         case .confirmed: return "checkmark.circle.fill"
+        case .actionRequired: return "exclamationmark.triangle.fill"
         case .failed: return "xmark.circle.fill"
+        case .incomplete: return "phone.down.circle.fill"
         }
     }
 }

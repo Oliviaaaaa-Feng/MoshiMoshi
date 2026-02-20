@@ -7,6 +7,8 @@
 
 import SwiftUI
 import Foundation
+import Supabase
+
 
 class ReservationViewModel: ObservableObject {
     @Published var request = ReservationRequest()
@@ -51,7 +53,7 @@ class ReservationViewModel: ObservableObject {
         self.request.reservationTime = timeFormatter.string(from: request.dateTime)
         
         // 2. Create a "Pending" ticket immediately for UX
-        var newUIItem = ReservationItem(
+        let newUIItem = ReservationItem(
             backendId: nil,
             request: self.request,
             status: .pending,
@@ -69,22 +71,20 @@ class ReservationViewModel: ObservableObject {
                 // Call Backend to Create
                 let response = try await APIService.shared.sendReservation(request: self.request)
 
-                // for webhook testing
-                let presentationTestID = "0a43df25-e617-4ff8-9c16-2243337df28b"
+                // Use the real backend ID returned from the server
+                let realBackendId = response.reservation.id
 
                 await MainActor.run {
                     // Update UI item
                     if let index = self.reservations.firstIndex(where: { $0.id == newUIItem.id }) {
-                        self.reservations[index].backendId = presentationTestID
-                        // self.reservations[index].backendId = response.reservation.id
+                        self.reservations[index].backendId = realBackendId
                         self.reservations[index].resultMessage = "AI is calling the restaurant..."
                     }
                     self.isSubmitting = false
                 }
-                        
-                // Start Polling
-                await startPolling(backendId: presentationTestID, uiItemId: newUIItem.id)
-                // await startPolling(backendId: response.reservation.id, uiItemId: newUIItem.id)
+                
+                // Initialize Supabase Realtime Listener
+                await startRealtimeListener(backendId: realBackendId, uiItemId: newUIItem.id)
                         
             } catch {
                 await MainActor.run {
@@ -95,51 +95,77 @@ class ReservationViewModel: ObservableObject {
         }
     }
     
-    
-    // MARK: - Polling Logic
-        func startPolling(backendId: String, uiItemId: UUID) async {
-            var attempts = 0
-            let maxAttempts = 30 // 最多查 30 次 (60秒)
-            
-            while attempts < maxAttempts {
-                try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+    // MARK: - Supabase Realtime V2 Logic
+        func startRealtimeListener(backendId: String, uiItemId: UUID) async {
+            let channel = APIService.shared.supabase.channel("public:reservations:id=eq.\(backendId)")
                 
-                do {
-                    // Check status
-                    if let data = try await APIService.shared.fetchReservation(id: backendId) {
-                        
-                        print("🔍 Polling: Status is \(data.status)")
-                        
-                        // If completed
-                        if data.status == "completed" || data.status == "failed" {
-                            
-                            await MainActor.run {
-                                if data.bookingConfirmed == true {
-                                    // Success
-                                    let notes = data.confirmationDetails?.notes
-                                    let displayMsg = (notes != nil && !notes!.isEmpty) ? notes! : "Reservation Confirmed!"
-                                    self.updateTicket(id: uiItemId, status: .confirmed, message: displayMsg)
-                                } else {
-                                    // Fail
-                                    let altTime = data.confirmationDetails?.alternative_times
-                                    let reason = data.failureReason ?? "Reservation rejected"
-                                    var displayMsg = reason
-                                    if let alt = altTime, !alt.isEmpty {
-                                        displayMsg = "\(reason)\nAlternative Time: \(alt)"
-                                    }
-                                    self.updateTicket(id: uiItemId, status: .failed, message: displayMsg)
-                                }
-                            }
-                            break
-                        }
-                    }
-                } catch {
-                    print("Polling error: \(error)")
+            // 1. Establish a channel listening to the specific row matching the backendId
+            let changes = channel.postgresChange(
+                UpdateAction.self,
+                schema: "public",
+                table: "reservations",
+                filter: .eq("id", value: backendId)
+            )
+                
+            // Subscribe to the channel
+            do {
+                try await channel.subscribeWithError()
+                print("🎧 RealtimeV2: Listening for status updates on reservation \(backendId)...")
+            } catch {
+                print("❌ RealtimeV2 connection failed: \(error)")
+                // If the WebSocket fails to connect, update the UI to prevent infinite loading
+                await MainActor.run {
+                    self.updateTicket(id: uiItemId, status: .failed, message: "Connection error. Please refresh.")
                 }
+                return // Exit the listener
+            }
                 
-                attempts += 1
+            // 3. Await the server push stream
+            for await change in changes {
+                do {
+                    // Instantly decode the incoming data!
+                    let updatedRecord = try change.record.decode(as: ReservationData.self)
+                    print("⚡️ RealtimeV2 update received! Latest status: \(updatedRecord.status)")
+                
+                    await MainActor.run {
+                        self.handleStatusUpdate(record: updatedRecord, uiItemId: uiItemId)
+                    }
+                        
+                    // Mission accomplished, unsubscribe to release resources
+                    await channel.unsubscribe()
+                    break
+                    
+                } catch {
+                    print("❌ RealtimeV2 data parsing failed: \(error)")
+                }
             }
         }
+    
+    // MARK: - Helpers
+    private func handleStatusUpdate(record: ReservationData, uiItemId: UUID) {
+        let failureReason = record.failureReason ?? ""
+        let summary = record.confirmationDetails?.analysis?.transcriptSummary ?? ""
+            
+        switch record.status {
+        case "completed", "confirmed":
+            let msg = summary.isEmpty ? "Reservation Confirmed!" : "Confirmed: \(summary)"
+            updateTicket(id: uiItemId, status: .confirmed, message: msg)
+                
+        case "action_required":
+            let msg = failureReason.isEmpty ? "Action needed." : failureReason
+            updateTicket(id: uiItemId, status: .actionRequired, message: "⚠️ Action Required:\n\(msg)")
+                
+        case "failed":
+            let msg = failureReason.isEmpty ? "Rejected by restaurant." : failureReason
+            updateTicket(id: uiItemId, status: .failed, message: "❌ Failed: \(msg)")
+                
+        case "incomplete":
+            updateTicket(id: uiItemId, status: .incomplete, message: "⚠️ Call disconnected. Please try again.")
+                
+        default:
+            print("Received unknown status update: \(record.status)")
+        }
+    }
     
     // Helper function to update a specific ticket in the list
     func updateTicket(id: UUID, status: ReservationStatus, message: String) {
