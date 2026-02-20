@@ -6,47 +6,77 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('[Webhook] Received payload at:', new Date().toISOString());
 
-    const BACKUP_ID = "0a43df25-e617-4ff8-9c16-2243337df28b";
-    let reservationId = body.data?.conversation_initiation_client_data?.dynamic_variables?.reservation_id || BACKUP_ID;
-
     const results = body.data?.analysis?.data_collection_results || {};
 
-    const extracted = {
-      status: results.reservation_status?.value || results.reservation_status || "",
-      notes: results.restaurant_notes?.value || "",
-      alternative_times: results.alternative_times?.value || "",
-      rejection_reason: results.rejection_reason?.value || null
-    };
+    // "Confirmed", "Action Required", "Failed", "Incomplete"
+    const rawStatus = results.reservation_status?.value || results.reservation_status || "Incomplete";
+    
+    // database - failure_reason
+    const requiredAction = results.required_action?.value || null;
+    const rejectionReason = results.rejection_reason?.value || null;
 
-    const isConfirmed = extracted.status === 'confirmed';
+    // database - status
+    let dbStatus = 'completed';
+    let isConfirmed = false;
+    let finalFailureReason = null;
 
-    console.log(`[Webhook] Target ID: ${reservationId}, Confirmed: ${isConfirmed}`);
+    if (rawStatus === 'Confirmed') {
+      isConfirmed = true;
+    } else if (rawStatus === 'Action Required') {
+      dbStatus = 'action_required';
+      finalFailureReason = requiredAction;
+    } else if (rawStatus === 'Failed') {
+      dbStatus = 'failed';
+      finalFailureReason = rejectionReason;
+    } else {
+      dbStatus = 'incomplete';
+    }
+
+    console.log(`[Webhook] status - ElevenLabs: ${rawStatus} -> DB: ${dbStatus}, Confirmed: ${isConfirmed}`);
 
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    // get the latest pending data
+    const { data: latestPending, error: fetchError } = await supabase
       .from('reservations')
-      .update({
-        status: 'completed',
-        booking_confirmed: isConfirmed,
-        failure_reason: extracted.rejection_reason,
-        confirmation_details: {
-          status: extracted.status,
-          notes: extracted.notes,
-          alternative_times: extracted.alternative_times
-        },
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', reservationId)
-      .select()
+      .select('id')
+      .eq('status', 'calling')
+      .order('created_at', { ascending: false })
+      .limit(1)
       .single();
 
-    if (error) {
-      console.error('[Webhook] Supabase error:', error);
+    if (fetchError || !latestPending) {
+      console.error('[Webhook] Did not find pending status reservation:', fetchError);
+      return NextResponse.json({ success: false, message: 'No pending reservation found' }, { status: 200 });
+    }
+
+    const targetId = latestPending.id;
+    console.log(`[Webhook] target reservation ID: ${targetId}`);
+
+    // TODO: [Next Stage - This part needs to be refactored after integrating Twilio]
+    // need conversation_id
+    // const realConvId = body.conversation_id || body.data?.conversation_id;
+    // .eq('conversation_id', realConvId) replace .eq('id', targetId)。
+
+    // update database
+    const { error: updateError } = await supabase
+      .from('reservations')
+      .update({
+        status: dbStatus,
+        booking_confirmed: isConfirmed,
+        failure_reason: finalFailureReason,
+        confirmation_details: body.data, 
+        
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', targetId);
+
+    if (updateError) {
+      console.error('[Webhook] Supabase update error:', updateError);
       return NextResponse.json({ error: 'Database update failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, updated_id: reservationId });
+    return NextResponse.json({ success: true, updated_id: targetId });
 
   } catch (error) {
     console.error('[Webhook] Fatal error:', error);
