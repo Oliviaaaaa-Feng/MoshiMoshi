@@ -12,10 +12,15 @@ export async function POST(request: NextRequest) {
     const dataResults = analysis.data_collection_results || {};
     const metadata = rawData.metadata || {};
 
+    const cleanTranscript = (rawData.transcript || []).map((msg: any) => ({
+      role: msg.role || "unknown",
+      message: msg.message || ""
+    }));
+
     const cleanedDetails = {
       summary: analysis.transcript_summary || "",
       results: dataResults,
-      transcript: rawData.transcript || [],
+      transcript: cleanTranscript,
       call_stats: {
         duration: metadata.call_duration_secs || 0,
         cost: metadata.cost || 0
