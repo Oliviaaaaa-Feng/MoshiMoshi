@@ -270,20 +270,21 @@ struct UpcomingEventCard: View {
 // Action Alert Card Component (For Failed / Action Required / Incomplete)
 struct ActionAlertCard: View {
     let item: ReservationItem
-    
+    @State private var showDetailSheet = false
+
     var isActionRequired: Bool {
         item.status == .actionRequired
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(item.request.restaurantName)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.sushiNori)
-                
+
                 Spacer()
-                
+
                 Text(item.status.rawValue)
                     .font(.system(size: 12, weight: .bold))
                     .padding(.horizontal, 10)
@@ -292,16 +293,14 @@ struct ActionAlertCard: View {
                     .foregroundColor(item.status.color)
                     .clipShape(Capsule())
             }
-            
+
             Text(item.fullData?.failureReason ?? item.resultMessage ?? "Issue detected. Please review.")
                 .font(.system(size: 14))
                 .foregroundColor(.gray)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            
-            Button(action: {
-                // TODO: Details Sheet
-            }) {
+
+            Button(action: { showDetailSheet = true }) {
                 HStack(spacing: 6) {
                     Text(isActionRequired ? "Resolve Issue" : "View Options")
                     Image(systemName: "arrow.right")
@@ -322,6 +321,16 @@ struct ActionAlertCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(item.status.color.opacity(0.15), lineWidth: 1)
         )
+        .sheet(isPresented: $showDetailSheet) {
+            NavigationStack {
+                ReservationDetailView(item: item)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showDetailSheet = false }
+                        }
+                    }
+            }
+        }
     }
 }
 

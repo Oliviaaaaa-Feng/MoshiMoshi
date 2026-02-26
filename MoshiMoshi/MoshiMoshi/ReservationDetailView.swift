@@ -11,13 +11,21 @@ import AVFoundation
 
 struct ReservationDetailView: View {
     let item: ReservationItem
-    
+    @State private var showResponseSheet = false
+
+    private var isActionRequired: Bool { item.status == .actionRequired }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // 0. Action Required banner (when applicable)
+                if isActionRequired {
+                    actionRequiredBanner
+                }
+
                 // 1. Details Grid Card
                 detailsGridCard
-                
+
                 // 2. Call History Section
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Call History")
@@ -44,8 +52,48 @@ struct ReservationDetailView: View {
                     .clipShape(Capsule())
             }
         }
+        .sheet(isPresented: $showResponseSheet) {
+            ActionResponseView(item: item)
+        }
     }
-    
+
+    // MARK: - Action Required Banner
+    private var actionRequiredBanner: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(item.status.color)
+                Text("Action Required")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.sushiNori)
+            }
+            Text(item.fullData?.failureReason ?? item.resultMessage ?? "The restaurant needs your response.")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: { showResponseSheet = true }) {
+                HStack(spacing: 6) {
+                    Text("Respond to Request")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.sushiTuna)
+                .cornerRadius(12)
+            }
+        }
+        .padding(16)
+        .background(item.status.color.opacity(0.08))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(item.status.color.opacity(0.2), lineWidth: 1)
+        )
+    }
+
     // MARK: - 2x3 Details Grid
     private var detailsGridCard: some View {
         VStack(spacing: 20) {
