@@ -132,13 +132,26 @@ class ReservationViewModel: ObservableObject {
                         req.customerEmail = row.customerEmail ?? ""
                         req.partySize = row.partySize ?? 2
                         req.specialRequests = row.specialRequests ?? ""
+                        req.reservationDate = row.reservationDate ?? ""
+                        req.reservationTime = row.reservationTime ?? ""
                         
-                        // Reconstruct DateTime object for the UI cards
-                        let dateFormatter = DateFormatter()
-                        dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-                        if let dateStr = row.reservationDate, let timeStr = row.reservationTime {
-                            if let parsedDate = dateFormatter.date(from: "\(dateStr) \(timeStr)") {
-                                req.dateTime = parsedDate
+                        // Reconstruct DateTime in Japan time (JST) for UI and upcoming filter.
+                        // DB returns DATE as "yyyy-MM-dd", TIME as "HH:mm:ss" or "HH:mm" (PostgreSQL/Supabase).
+                        let jst = TimeZone(identifier: "Asia/Tokyo")!
+                        let dateStr = row.reservationDate ?? ""
+                        let timeStr = row.reservationTime ?? ""
+                        if !dateStr.isEmpty, !timeStr.isEmpty {
+                            let combinedFull = "\(dateStr) \(timeStr)"
+                            let formatterWithSec = DateFormatter()
+                            formatterWithSec.dateFormat = "yyyy-MM-dd HH:mm:ss"
+                            formatterWithSec.timeZone = jst
+                            let formatterNoSec = DateFormatter()
+                            formatterNoSec.dateFormat = "yyyy-MM-dd HH:mm"
+                            formatterNoSec.timeZone = jst
+                            let parsed = formatterWithSec.date(from: combinedFull)
+                                ?? formatterNoSec.date(from: "\(dateStr) \(timeStr.prefix(5))")
+                            if let parsed = parsed {
+                                req.dateTime = parsed
                             }
                         }
                         
@@ -310,7 +323,12 @@ class ReservationViewModel: ObservableObject {
         return reservations.filter { $0.status == .failed || $0.status == .incomplete }
     }
             
+    /// Confirmed reservations whose date/time (in Japan time) is still in the future.
     var upcomingReservations: [ReservationItem] {
-        return reservations.filter { $0.status == .confirmed }
+        let now = Date()
+        return reservations.filter { item in
+            guard item.status == .confirmed else { return false }
+            return item.request.dateTime > now
+        }
     }
 }

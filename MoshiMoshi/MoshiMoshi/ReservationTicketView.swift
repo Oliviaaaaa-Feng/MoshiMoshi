@@ -56,7 +56,7 @@ struct ReservationTicketView: View {
                 }
                 
                 HStack(alignment: .top) {
-                    InfoRow(icon: "clock", text: formatTime(item.request.dateTime))
+                    InfoRow(icon: "clock", text: reservationTimeDisplay(item.request.reservationTime))
                     Spacer()
                     // Temp location
                     InfoRow(icon: "mappin.and.ellipse", text: "Japan")
@@ -131,5 +131,11 @@ struct ReservationTicketView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date) + " (GMT+9)"
+    }
+
+    /// Show reservation time as stored (local time), e.g. "19:00"
+    private func reservationTimeDisplay(_ reservationTime: String) -> String {
+        guard !reservationTime.isEmpty else { return "—" }
+        return reservationTime.count >= 5 ? String(reservationTime.prefix(5)) : reservationTime
     }
 }

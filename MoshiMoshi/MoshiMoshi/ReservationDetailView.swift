@@ -56,7 +56,7 @@ struct ReservationDetailView: View {
             }
             
             HStack(alignment: .top) {
-                InfoBlock(icon: "clock", title: "TIME", value: formatTime(item.request.dateTime))
+                InfoBlock(icon: "clock", title: "TIME", value: reservationTimeDisplay(item.request.reservationTime))
                 Spacer()
                 InfoBlock(icon: "mappin.and.ellipse", title: "LOCATION", value: "Japan")
             }
@@ -121,6 +121,12 @@ struct ReservationDetailView: View {
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter(); formatter.dateFormat = "h:mm a"
         return formatter.string(from: date) + " (GMT+9)"
+    }
+
+    /// Show reservation time as stored (local time), e.g. "19:00"
+    private func reservationTimeDisplay(_ reservationTime: String) -> String {
+        guard !reservationTime.isEmpty else { return "—" }
+        return reservationTime.count >= 5 ? String(reservationTime.prefix(5)) : reservationTime
     }
 }
 

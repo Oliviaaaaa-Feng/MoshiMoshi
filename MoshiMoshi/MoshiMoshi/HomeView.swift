@@ -209,11 +209,11 @@ struct UpcomingEventCard: View {
                     .foregroundColor(.sushiNori)
 
                 HStack(spacing: 10) {
-                    // Time
+                    // Time (reservation time = local time, show as stored)
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
                             .font(.system(size: 12))
-                        Text(timeString(from: item.request.dateTime))
+                        Text(reservationTimeDisplay(item.request.reservationTime))
                             .font(.system(size: 14))
                     }
                     .foregroundColor(.gray)
@@ -258,6 +258,12 @@ struct UpcomingEventCard: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
+    }
+
+    /// Show reservation time as stored (local time), e.g. "19:00" from "19:00" or "19:00:00"
+    func reservationTimeDisplay(_ reservationTime: String) -> String {
+        guard !reservationTime.isEmpty else { return "—" }
+        return reservationTime.count >= 5 ? String(reservationTime.prefix(5)) : reservationTime
     }
 }
 
