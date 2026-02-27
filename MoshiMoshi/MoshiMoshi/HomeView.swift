@@ -85,7 +85,7 @@ struct HomeView: View {
                                 .padding(.horizontal)
 
                                 ForEach(viewModel.actionRequiredItems.prefix(3)) { item in
-                                    ActionAlertCard(item: item)
+                                    ActionAlertCard(item: item, viewModel: viewModel)
                                         .padding(.horizontal)
                                 }
                         }
@@ -96,7 +96,7 @@ struct HomeView: View {
                         if !viewModel.failedOrIncompleteItems.isEmpty {
                             VStack(alignment: .leading, spacing: 16) {
                                 ForEach(viewModel.failedOrIncompleteItems.prefix(3)) { item in
-                                    ActionAlertCard(item: item)
+                                    ActionAlertCard(item: item, viewModel: viewModel)
                                         .padding(.horizontal)
                                 }
                             }
@@ -209,11 +209,11 @@ struct UpcomingEventCard: View {
                     .foregroundColor(.sushiNori)
 
                 HStack(spacing: 10) {
-                    // Time
+                    // Time (reservation time = local time, show as stored)
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
                             .font(.system(size: 12))
-                        Text(timeString(from: item.request.dateTime))
+                        Text(reservationTimeDisplay(item.request.reservationTime))
                             .font(.system(size: 14))
                     }
                     .foregroundColor(.gray)
@@ -259,25 +259,34 @@ struct UpcomingEventCard: View {
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date)
     }
+
+    /// Show reservation time as stored (local time), e.g. "19:00" from "19:00" or "19:00:00"
+    func reservationTimeDisplay(_ reservationTime: String) -> String {
+        guard !reservationTime.isEmpty else { return "—" }
+        return reservationTime.count >= 5 ? String(reservationTime.prefix(5)) : reservationTime
+    }
 }
 
 // Action Alert Card Component (For Failed / Action Required / Incomplete)
 struct ActionAlertCard: View {
     let item: ReservationItem
-    
+    @ObservedObject var viewModel: ReservationViewModel
+    @State private var showDetailSheet = false
+    @State private var showCancelConfirm = false
+
     var isActionRequired: Bool {
         item.status == .actionRequired
     }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text(item.request.restaurantName)
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(.sushiNori)
-                
+
                 Spacer()
-                
+
                 Text(item.status.rawValue)
                     .font(.system(size: 12, weight: .bold))
                     .padding(.horizontal, 10)
@@ -286,28 +295,46 @@ struct ActionAlertCard: View {
                     .foregroundColor(item.status.color)
                     .clipShape(Capsule())
             }
-            
+
             Text(item.fullData?.failureReason ?? item.resultMessage ?? "Issue detected. Please review.")
                 .font(.system(size: 14))
                 .foregroundColor(.gray)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            
-            Button(action: {
-                // TODO: Details Sheet
-            }) {
-                HStack(spacing: 6) {
-                    Text(isActionRequired ? "Resolve Issue" : "View Options")
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 12))
+
+            HStack(spacing: 10) {
+                Button(action: { showDetailSheet = true }) {
+                    HStack(spacing: 6) {
+                        Text(isActionRequired ? "Resolve Issue" : "View Options")
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 12))
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(item.status == .incomplete ? .sushiNori : .white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(item.status.color)
+                    .cornerRadius(20)
                 }
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(item.status == .incomplete ? .sushiNori : .white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(item.status.color)
-                .cornerRadius(20)
+                if isActionRequired {
+                    Button(action: { showCancelConfirm = true }) {
+                        Text("Cancel")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.sushiTuna)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.sushiTuna, lineWidth: 1))
+                    }
+                }
             }
+        }
+        .alert("Cancel reservation?", isPresented: $showCancelConfirm) {
+            Button("Keep", role: .cancel) { }
+            Button("Cancel reservation", role: .destructive) {
+                viewModel.cancelReservation(uiItemId: item.id)
+            }
+        } message: {
+            Text("This will mark the reservation as cancelled. You can still see it in History.")
         }
         .padding(16)
         .background(item.status.color.opacity(0.05))
@@ -316,6 +343,16 @@ struct ActionAlertCard: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(item.status.color.opacity(0.15), lineWidth: 1)
         )
+        .sheet(isPresented: $showDetailSheet) {
+            NavigationStack {
+                ReservationDetailView(item: item, viewModel: viewModel)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showDetailSheet = false }
+                        }
+                    }
+            }
+        }
     }
 }
 

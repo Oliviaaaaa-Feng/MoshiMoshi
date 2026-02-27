@@ -10,9 +10,8 @@ import SwiftUI
 
 struct ReservationTicketView: View {
     let item: ReservationItem
-    @State private var showResponseSheet = false
-    var isActionRequired: Bool { item.status == .actionRequired }
-    
+    @ObservedObject var viewModel: ReservationViewModel
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             // 1. Header: Restaurant Name & Status
@@ -56,7 +55,7 @@ struct ReservationTicketView: View {
                 }
                 
                 HStack(alignment: .top) {
-                    InfoRow(icon: "clock", text: formatTime(item.request.dateTime))
+                    InfoRow(icon: "clock", text: reservationTimeDisplay(item.request.reservationTime))
                     Spacer()
                     // Temp location
                     InfoRow(icon: "mappin.and.ellipse", text: "Japan")
@@ -66,47 +65,27 @@ struct ReservationTicketView: View {
                 InfoRow(icon: "person.2", text: "\(item.request.partySize) People")
             }
             .foregroundColor(.secondary)
-            
-            var isActionRequired: Bool { item.status == .actionRequired }
-            
-            // 3. Bottom Button
-            if isActionRequired {
-                Button(action: {
-                    showResponseSheet = true
-                }) {
-                    Text("Respond to Request")
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.sushiTuna)
-                        .foregroundColor(.white)
-                        .cornerRadius(25)
-                }
-                .padding(.top, 5)
-            } else {
-                NavigationLink(destination: ReservationDetailView(item: item)) {
-                    Text("View Details")
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.clear)
-                        .foregroundColor(.black)
-                        .cornerRadius(25)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 25)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                        )
-                }
-                .padding(.top, 5)
+
+            // 3. View Details — one tap to see full details (and Respond to Request if action required)
+            NavigationLink(destination: ReservationDetailView(item: item, viewModel: viewModel)) {
+                Text("View Details")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(item.status == .actionRequired ? Color.sushiTuna : Color.clear)
+                    .foregroundColor(item.status == .actionRequired ? .white : .black)
+                    .cornerRadius(25)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 25)
+                            .stroke(item.status == .actionRequired ? Color.clear : Color.gray.opacity(0.3), lineWidth: 1)
+                    )
             }
+            .padding(.top, 5)
         }
         .padding(24)
         .background(Color.white)
         .cornerRadius(24)
         .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 5)
-        .sheet(isPresented: $showResponseSheet) {
-            ActionResponseView(item: item)
-        }
     }
     
     // MARK: - Helper Views & Formatters
@@ -131,5 +110,11 @@ struct ReservationTicketView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         return formatter.string(from: date) + " (GMT+9)"
+    }
+
+    /// Show reservation time as stored (local time), e.g. "19:00"
+    private func reservationTimeDisplay(_ reservationTime: String) -> String {
+        guard !reservationTime.isEmpty else { return "—" }
+        return reservationTime.count >= 5 ? String(reservationTime.prefix(5)) : reservationTime
     }
 }

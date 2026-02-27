@@ -11,13 +11,29 @@ import AVFoundation
 
 struct ReservationDetailView: View {
     let item: ReservationItem
-    
+    @ObservedObject var viewModel: ReservationViewModel
+    @State private var showResponseSheet = false
+    @Environment(\.dismiss) private var dismiss
+
+    private var isActionRequired: Bool { item.status == .actionRequired }
+    private var canModifyOrCancel: Bool {
+        switch item.status {
+        case .confirmed, .cancelled: return false
+        default: return true
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
+                // 0. Action Required banner (when applicable)
+                if isActionRequired {
+                    actionRequiredBanner
+                }
+
                 // 1. Details Grid Card
                 detailsGridCard
-                
+
                 // 2. Call History Section
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Call History")
@@ -44,8 +60,48 @@ struct ReservationDetailView: View {
                     .clipShape(Capsule())
             }
         }
+        .sheet(isPresented: $showResponseSheet) {
+            ActionResponseView(item: item)
+        }
     }
-    
+
+    // MARK: - Action Required Banner
+    private var actionRequiredBanner: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(item.status.color)
+                Text("Action Required")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.sushiNori)
+            }
+            Text(item.fullData?.failureReason ?? item.resultMessage ?? "The restaurant needs your response.")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(action: { showResponseSheet = true }) {
+                HStack(spacing: 6) {
+                    Text("Respond to Request")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.sushiTuna)
+                .cornerRadius(12)
+            }
+        }
+        .padding(16)
+        .background(item.status.color.opacity(0.08))
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(item.status.color.opacity(0.2), lineWidth: 1)
+        )
+    }
+
     // MARK: - 2x3 Details Grid
     private var detailsGridCard: some View {
         VStack(spacing: 20) {
@@ -56,7 +112,7 @@ struct ReservationDetailView: View {
             }
             
             HStack(alignment: .top) {
-                InfoBlock(icon: "clock", title: "TIME", value: formatTime(item.request.dateTime))
+                InfoBlock(icon: "clock", title: "TIME", value: reservationTimeDisplay(item.request.reservationTime))
                 Spacer()
                 InfoBlock(icon: "mappin.and.ellipse", title: "LOCATION", value: "Japan")
             }
@@ -68,24 +124,41 @@ struct ReservationDetailView: View {
             }
             
             Divider().padding(.vertical, 8)
-            
-            // Modify / Cancel Buttons
-            HStack(spacing: 16) {
-                Button(action: { /* TODO: Modify */ }) {
-                    Text("Modify")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .overlay(RoundedRectangle(cornerRadius: 25).stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [5])))
+
+            // Modify / Cancel or status message
+            if item.status == .cancelled {
+                Text("This reservation was cancelled.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else if item.status == .confirmed {
+                Text("Confirmed reservations cannot be modified or cancelled.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            } else if canModifyOrCancel {
+                HStack(spacing: 16) {
+                    Button(action: { /* TODO: Modify */ }) {
+                        Text("Modify")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .overlay(RoundedRectangle(cornerRadius: 25).stroke(Color.gray.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [5])))
+                    }
+                    .foregroundColor(.black)
+
+                    Button(action: {
+                        viewModel.cancelReservation(uiItemId: item.id)
+                        dismiss()
+                    }) {
+                        Text("Cancel")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .overlay(RoundedRectangle(cornerRadius: 25).stroke(Color.sushiTuna.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5])))
+                    }
+                    .foregroundColor(.sushiTuna)
                 }
-                .foregroundColor(.black)
-                
-                Button(action: { /* TODO: Cancel */ }) {
-                    Text("Cancel")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .overlay(RoundedRectangle(cornerRadius: 25).stroke(Color.sushiTuna.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [5])))
-                }
-                .foregroundColor(.sushiTuna)
             }
         }
         .padding(20)
@@ -121,6 +194,12 @@ struct ReservationDetailView: View {
     private func formatTime(_ date: Date) -> String {
         let formatter = DateFormatter(); formatter.dateFormat = "h:mm a"
         return formatter.string(from: date) + " (GMT+9)"
+    }
+
+    /// Show reservation time as stored (local time), e.g. "19:00"
+    private func reservationTimeDisplay(_ reservationTime: String) -> String {
+        guard !reservationTime.isEmpty else { return "—" }
+        return reservationTime.count >= 5 ? String(reservationTime.prefix(5)) : reservationTime
     }
 }
 
