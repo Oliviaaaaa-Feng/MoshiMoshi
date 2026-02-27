@@ -88,4 +88,20 @@ class APIService {
 
             return listResponse.reservations.first(where: { $0.id == id })
         }
+
+    /// PATCH reservation status (e.g. set to "cancelled"). Persists to backend.
+    func updateReservationStatus(backendId: String, status: String) async throws {
+        guard let url = URL(string: "\(baseURL)/\(backendId)") else {
+            throw URLError(.badURL)
+        }
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = "PATCH"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.httpBody = try JSONEncoder().encode(["status": status])
+
+        let (_, response) = try await URLSession.shared.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+    }
 }

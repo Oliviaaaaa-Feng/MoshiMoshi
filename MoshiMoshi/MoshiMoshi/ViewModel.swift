@@ -328,9 +328,23 @@ class ReservationViewModel: ObservableObject {
         }
     }
 
-    /// Mark a reservation as cancelled (local update; optionally sync to backend later).
+    /// Mark a reservation as cancelled (updates local state and backend DB).
     func cancelReservation(uiItemId: UUID) {
-        updateTicket(id: uiItemId, status: .cancelled, message: "Cancelled")
+        let item = reservations.first { $0.id == uiItemId }
+        let backendId = item?.backendId
+
+        Task {
+            if let backendId = backendId {
+                do {
+                    try await APIService.shared.updateReservationStatus(backendId: backendId, status: "cancelled")
+                } catch {
+                    print("❌ Failed to update reservation status on server: \(error.localizedDescription)")
+                }
+            }
+            await MainActor.run {
+                updateTicket(id: uiItemId, status: .cancelled, message: "Cancelled")
+            }
+        }
     }
         
     // Failed and Incomplete
