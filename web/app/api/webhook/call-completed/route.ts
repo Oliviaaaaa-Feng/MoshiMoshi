@@ -12,8 +12,8 @@ export async function POST(request: NextRequest) {
     const dataResults = analysis.data_collection_results || {};
     const metadata = rawData.metadata || {};
 
-    const realConvId = body.conversation_id || rawData.conversation_id || metadata.conversation_id;
-    console.log(`[Webhook] Extracted conversation_id: ${realConvId}`);
+    const convId = body.conversation_id || rawData.conversation_id || metadata.conversation_id;
+    console.log(`[Webhook] Extracted conversation_id: ${convId}`);
 
     const cleanTranscript = (rawData.transcript || []).map((msg: any) => ({
       role: msg.role || "unknown",
@@ -59,34 +59,32 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient();
 
-    // get the latest pending data
-    const { data: latestPending, error: fetchError } = await supabase
-      .from('reservations')
-      .select('id')
-      .eq('status', 'calling')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (fetchError || !latestPending) {
-      console.error('[Webhook] Did not find pending status reservation:', fetchError);
-      return NextResponse.json({ success: false, message: 'No pending reservation found' }, { status: 200 });
+    // Find reservation by conversation_id
+    if (!convId) {
+      console.error('[Webhook] Missing conversation_id in webhook payload');
+      return NextResponse.json({ success: false, message: 'Missing conversation_id' }, { status: 400 });
     }
 
-    const targetId = latestPending.id;
-    console.log(`[Webhook] target reservation ID: ${targetId}`);
+    const { data: targetReservation, error: fetchError } = await supabase
+      .from('reservations')
+      .select('id')
+      .eq('conversation_id', convId)
+      .single();
 
-    // TODO: [Next Stage - This part needs to be refactored after integrating Twilio]
-    // need conversation_id
-    // const realConvId = body.conversation_id || body.data?.conversation_id;
-    // .eq('conversation_id', realConvId) replace .eq('id', targetId)。
+    if (fetchError || !targetReservation) {
+      console.error('[Webhook] Did not find reservation with conversation_id:', convId, fetchError);
+      return NextResponse.json({ success: false, message: 'No matching reservation found' }, { status: 200 });
+    }
+
+    const targetId = targetReservation.id;
+    console.log(`[Webhook] Found reservation ID: ${targetId} for conversation_id: ${convId}`);
 
     // Audio
     let finalAudioUrl = null;
-    if (realConvId && process.env.ELEVENLABS_API_KEY) {
+    if (convId && process.env.ELEVENLABS_API_KEY) {
       try {
-        console.log(`[Webhook] Fetching audio for ${realConvId}...`);
-        const audioRes = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${realConvId}/audio`, {
+        console.log(`[Webhook] Fetching audio for ${convId}...`);
+        const audioRes = await fetch(`https://api.elevenlabs.io/v1/convai/conversations/${convId}/audio`, {
           method: 'GET',
           headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }
         });
@@ -94,7 +92,7 @@ export async function POST(request: NextRequest) {
         if (audioRes.ok) {
           const audioBlob = await audioRes.blob();
           const audioBuffer = await audioBlob.arrayBuffer();
-          const fileName = `${realConvId}.mp3`;
+          const fileName = `${convId}.mp3`;
 
           // to call_audios bucket
           const { error: uploadError } = await supabase.storage
@@ -121,7 +119,7 @@ export async function POST(request: NextRequest) {
         console.error('[Webhook] Error during audio processing:', audioError);
       }
     } else {
-      console.warn('[Webhook] Missing realConvId or ELEVENLABS_API_KEY. Skipping audio fetch.');
+      console.warn('[Webhook] Missing convId or ELEVENLABS_API_KEY. Skipping audio fetch.');
     }
 
 
