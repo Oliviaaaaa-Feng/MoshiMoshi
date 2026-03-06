@@ -196,13 +196,28 @@ class ReservationViewModel: ObservableObject {
                         case .cancelled: displayMsg = "Cancelled"
                         }
                         
-                        // Assemble the final item
+                        // NEW: Fetch all conversations for this reservation
+                        var conversations: [ConversationData] = []
+                        do {
+                            conversations = try await APIService.shared.supabase
+                                .from("conversations")
+                                .select()
+                                .eq("reservation_id", value: row.id)
+                                .order("created_at", ascending: false)
+                                .execute()
+                                .value
+                        } catch {
+                            print("⚠️ Failed to fetch conversations for reservation \(row.id): \(error.localizedDescription)")
+                        }
+
+                        // Assemble the final item with conversations array
                         let item = ReservationItem(
                             backendId: row.id,
                             request: req,
                             status: uiStatus,
                             resultMessage: displayMsg,
-                            fullData: fullData
+                            fullData: fullData,
+                            conversations: conversations
                         )
                         loadedItems.append(item)
                     }

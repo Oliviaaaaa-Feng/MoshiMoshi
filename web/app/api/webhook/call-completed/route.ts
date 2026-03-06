@@ -38,29 +38,41 @@ export async function POST(request: NextRequest) {
       }
     };
 
+    if (cleanTranscript.length === 0 && cleanedDetails.call_stats.duration === 0) {
+      console.log(`[Webhook] ntercepts phantom empty data (Conv: ${convId})，cancels database updates to protect existing data.`);
+      return NextResponse.json({ success: true, message: 'Ignored empty phantom payload' });
+    }
+
     // "Confirmed", "Action Required", "Failed", "Incomplete"
     const rawStatus = String(dataResults.reservation_status?.value || dataResults.reservation_status || "incomplete").toLowerCase();
-    
+
     // database - failure_reason
     const requiredAction = dataResults.required_action?.value || null;
     const rejectionReason = dataResults.rejection_reason?.value || null;
 
     // database - status
-    let dbStatus = 'completed'; 
+    let dbStatus = 'completed';
     let isConfirmed = false;
     let finalFailureReason = null;
 
-    if (rawStatus === 'confirmed') {
+    // Priority 1: Check if there's a required_action (e.g., alternative time offered)
+    if (requiredAction) {
+      dbStatus = 'action_required';
+      finalFailureReason = requiredAction;
+      isConfirmed = false;
+    }
+    // Priority 2: Check reservation_status
+    else if (rawStatus === 'confirmed') {
       dbStatus = 'completed';
       isConfirmed = true;
     } else if (rawStatus === 'action_required') {
-      dbStatus = 'action_required'; 
-      finalFailureReason = requiredAction; 
+      dbStatus = 'action_required';
+      finalFailureReason = requiredAction;
     } else if (rawStatus === 'failed') {
       dbStatus = 'failed';
       finalFailureReason = rejectionReason;
     } else {
-      dbStatus = 'incomplete'; 
+      dbStatus = 'incomplete';
     }
 
     console.log(`[Webhook] status - ElevenLabs: ${rawStatus} -> DB: ${dbStatus}, Confirmed: ${isConfirmed}`);

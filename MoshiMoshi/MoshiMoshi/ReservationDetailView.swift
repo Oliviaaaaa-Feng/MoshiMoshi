@@ -34,14 +34,43 @@ struct ReservationDetailView: View {
                 // 1. Details Grid Card
                 detailsGridCard
 
-                // 2. Call History Section
+                // 2. Call History Section - Show all conversations
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Call History")
                         .font(.system(size: 24, weight: .bold, design: .serif))
                         .foregroundColor(.sushiNori)
                         .padding(.horizontal, 4)
-                    
-                    CallHistoryExpandableCard(item: item)
+
+                    if item.conversations.isEmpty {
+                        // Fallback: Show old single conversation if no conversations array
+                        if item.fullData != nil {
+                            CallHistoryExpandableCard(
+                                conversation: nil,
+                                legacyData: item.fullData,
+                                status: item.status
+                            )
+                        } else {
+                            Text("No call history available")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .padding()
+                        }
+                    } else {
+                        // New: Show all conversations
+                        ForEach(Array(item.conversations.enumerated()), id: \.element.id) { index, conversation in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Call #\(item.conversations.count - index)")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+
+                                CallHistoryExpandableCard(
+                                    conversation: conversation,
+                                    legacyData: nil,
+                                    status: ReservationStatus(rawValue: conversation.status) ?? .incomplete
+                                )
+                            }
+                        }
+                    }
                 }
             }
             .padding()
@@ -205,10 +234,13 @@ struct ReservationDetailView: View {
 
 // MARK: - Transcript & Audio Card
 struct CallHistoryExpandableCard: View {
-    let item: ReservationItem
+    let conversation: ConversationData?  // New: conversation data from conversations table
+    let legacyData: ReservationData?     // Old: for backward compatibility
+    let status: ReservationStatus
+
     @State private var isExpanded = false
     @State private var selectedLanguage = "English"
-    
+
     // Audio Player States
     @State private var audioPlayer: AVPlayer?
     @State private var isPlaying = false
@@ -216,7 +248,31 @@ struct CallHistoryExpandableCard: View {
     @State private var totalDuration: Double = 0.0
     @State private var isDragging = false
     @State private var isFinished = false // Tracks if audio reached the end
-    
+
+    // Computed properties to get data from either source
+    private var audioUrl: String? {
+        conversation?.audioUrl ?? legacyData?.audioUrl
+    }
+
+    private var summary: String {
+        conversation?.confirmationDetails?.summary
+            ?? legacyData?.confirmationDetails?.summary
+            ?? "Call finished. Review details below."
+    }
+
+    private var transcript: [ReservationData.Details.ChatMessage] {
+        conversation?.confirmationDetails?.transcript
+            ?? legacyData?.confirmationDetails?.transcript
+            ?? []
+    }
+
+    private var updatedAt: String {
+        conversation?.callEndedAt
+            ?? conversation?.createdAt
+            ?? legacyData?.updatedAt
+            ?? ""
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             
@@ -227,12 +283,12 @@ struct CallHistoryExpandableCard: View {
                 }
             }) {
                 HStack(alignment: .top, spacing: 16) {
-                    let isSuccess = item.status == .confirmed
-                    let isFailed = item.status == .failed
+                    let isSuccess = status == .confirmed
+                    let isFailed = status == .failed
                     let iconColor = isSuccess ? Color.green : (isFailed ? Color.black : Color.sushiSalmon)
                     let bgColor = isSuccess ? Color.green.opacity(0.15) : (isFailed ? Color.gray.opacity(0.2) : Color.sushiSalmon.opacity(0.15))
                     let iconName = isSuccess ? "phone.badge.checkmark" : (isFailed ? "phone.down.fill" : "phone.arrow.up.right.fill")
-                    
+
                     // Status Icon
                     Circle()
                         .fill(bgColor)
@@ -241,14 +297,13 @@ struct CallHistoryExpandableCard: View {
                             Image(systemName: iconName)
                                 .foregroundColor(iconColor)
                         )
-                    
+
                     // Call Details
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(formatTime(item.fullData?.updatedAt ?? ""))
+                        Text(formatTime(updatedAt))
                             .font(.subheadline.bold())
                             .foregroundColor(.black)
-                        
-                        let summary = item.fullData?.confirmationDetails?.summary ?? "Call finished. Review details below."
+
                         Text(summary)
                             .font(.caption)
                             .foregroundColor(.gray)
@@ -278,7 +333,7 @@ struct CallHistoryExpandableCard: View {
                     Divider()
                     
                     // MARK: - Authentic Audio Player
-                    if let audioUrlString = item.fullData?.audioUrl, let _ = URL(string: audioUrlString) {
+                    if let audioUrlString = audioUrl, let _ = URL(string: audioUrlString) {
                         HStack(spacing: 12) {
                             // Play/Pause Button
                             Button(action: toggleAudio) {
@@ -346,7 +401,7 @@ struct CallHistoryExpandableCard: View {
                     
                     // MARK: - Transcript Chat List
                     VStack(alignment: .leading, spacing: 8) {
-                        if let transcript = item.fullData?.confirmationDetails?.transcript, !transcript.isEmpty {
+                        if !transcript.isEmpty {
                             ForEach(transcript) { msg in
                                 let displayRole: String = {
                                     let rawRole = msg.role.lowercased()
@@ -400,7 +455,7 @@ struct CallHistoryExpandableCard: View {
     
     // MARK: - Audio Controller Logic
     private func toggleAudio() {
-        guard let urlString = item.fullData?.audioUrl, let url = URL(string: urlString) else { return }
+        guard let urlString = audioUrl, let url = URL(string: urlString) else { return }
         
         // Initialize player only on first tap
         if audioPlayer == nil {

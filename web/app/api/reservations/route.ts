@@ -183,6 +183,10 @@ export async function POST(request: NextRequest) {
         .from('reservations')
         .update({ status: 'failed', failure_reason: errMessage })
         .eq('id', reservation.id)
+      await supabase
+        .from('conversations')
+        .update({ status: 'failed', failure_reason: errMessage })
+        .eq('id', conversation.id)
       return NextResponse.json(
         {
           success: false,
