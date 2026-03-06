@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 // POST /api/reservations/[id]/retry - Retry a failed reservation with user's response
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const body = await request.json()
@@ -17,7 +17,7 @@ export async function POST(
       )
     }
 
-    const reservationId = params.id
+    const { id: reservationId } = await params
     const supabase = await createClient()
 
     // Step 1: Fetch reservation details
