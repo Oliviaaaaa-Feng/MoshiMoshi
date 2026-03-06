@@ -91,6 +91,7 @@ struct ReservationDetailView: View {
         }
         .sheet(isPresented: $showResponseSheet) {
             ActionResponseView(item: item)
+                .environmentObject(viewModel)
         }
     }
 
