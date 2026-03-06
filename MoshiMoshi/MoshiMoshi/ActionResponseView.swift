@@ -10,6 +10,7 @@ import SwiftUI
 struct ActionResponseView: View {
     let item: ReservationItem
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var viewModel: ReservationViewModel
     
     @State private var userResponse: String = ""
     @State private var isSubmitting: Bool = false
@@ -102,32 +103,29 @@ struct ActionResponseView: View {
     
     /// Sends the user response to the backend and triggers a follow-up call
     private func sendCallback() {
-        guard let reservationId = item.backendId else {
-            print("[ActionResponse] Missing reservation ID")
-            isSubmitting = false
-            return
-        }
+            guard let reservationId = item.backendId else { return }
+            isSubmitting = true
 
-        isSubmitting = true
+            Task {
+                do {
+                    try await APIService.shared.retryReservation(
+                        reservationId: reservationId,
+                        userResponse: userResponse
+                    )
 
-        Task {
-            do {
-                try await APIService.shared.retryReservation(
-                    reservationId: reservationId,
-                    userResponse: userResponse
-                )
-
-                await MainActor.run {
-                    isSubmitting = false
-                    dismiss()
-                }
-            } catch {
-                print("[ActionResponse] Failed to send callback: \(error)")
-                await MainActor.run {
-                    isSubmitting = false
-                    // TODO: Show error alert to user
+                    await MainActor.run {
+                        viewModel.updateTicket(id: item.id, status: .pending, message: "AI is calling back...")
+                        
+                        isSubmitting = false
+                        dismiss()
+                    }
+                    
+                    await viewModel.startRealtimeListener(backendId: reservationId, uiItemId: item.id)
+                    
+                } catch {
+                    print("[ActionResponse] Failed to send callback: \(error)")
+                    await MainActor.run { isSubmitting = false }
                 }
             }
         }
-    }
 }
