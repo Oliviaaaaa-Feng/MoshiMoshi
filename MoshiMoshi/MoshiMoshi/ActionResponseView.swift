@@ -47,7 +47,7 @@ struct ActionResponseView: View {
                             .font(.body)
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.white)
+                            .background(Color.cardBackground)
                             .cornerRadius(12)
                             .shadow(color: .black.opacity(0.05), radius: 5, y: 2)
                     }
@@ -61,7 +61,7 @@ struct ActionResponseView: View {
                         TextField("e.g. 8:00 PM works for me", text: $userResponse, axis: .vertical)
                             .lineLimit(4...8)
                             .padding()
-                            .background(Color.white)
+                            .background(Color.cardBackground)
                             .cornerRadius(12)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
