@@ -100,8 +100,11 @@ class ReservationViewModel: ObservableObject {
                         self.reservations[index].resultMessage = "AI is calling the restaurant..."
                     }
                     self.isSubmitting = false
+
+                    // Clear form fields for next reservation
+                    self.resetFormFields()
                 }
-                
+
                 // Initialize Supabase Realtime Listener
                 await startRealtimeListener(backendId: realBackendId, uiItemId: newUIItem.id)
                         
@@ -378,6 +381,29 @@ class ReservationViewModel: ObservableObject {
             }
         }
     
+    /// Reset form fields after successful reservation (keep user contact info)
+    func resetFormFields() {
+        // Clear restaurant info
+        request.restaurantName = ""
+        request.restaurantPhone = ""
+        request.restaurantAddress = ""
+        request.restaurantMapsUrl = ""
+
+        // Reset date/time to current
+        request.dateTime = Date()
+        request.reservationDate = ""
+        request.reservationTime = ""
+
+        // Reset party size to default
+        request.partySize = 2
+
+        // Clear special requests
+        request.specialRequests = ""
+
+        // Keep user contact info (customerName, customerEmail, customerPhone)
+        // so users don't have to re-enter their info each time
+    }
+
     // Form Validation
     var isValid: Bool {
         return !request.restaurantName.isEmpty &&
