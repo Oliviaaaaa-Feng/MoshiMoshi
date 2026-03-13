@@ -28,10 +28,22 @@ export async function POST(request: NextRequest) {
       message: msg.message || ""
     }));
 
+    // Extract confirmed reservation details (date, time, party size, name, reference)
+    const confirmedDetailsRaw = dataResults.confirmed_reservation_details?.value || null;
+    let confirmedReservationDetails: Record<string, any> | null = null;
+    if (confirmedDetailsRaw) {
+      try {
+        confirmedReservationDetails = JSON.parse(confirmedDetailsRaw);
+      } catch {
+        confirmedReservationDetails = { raw: confirmedDetailsRaw };
+      }
+    }
+
     const cleanedDetails = {
       summary: analysis.transcript_summary || "",
       results: dataResults,
       transcript: cleanTranscript,
+      confirmed_reservation_details: confirmedReservationDetails,
       call_stats: {
         duration: metadata.call_duration_secs || 0,
         cost: metadata.cost || 0
