@@ -18,6 +18,8 @@ export async function POST(request: NextRequest) {
     
     // Extract ElevenLabs conversation_id
     const convId = body.conversation_id || rawData.conversation_id || metadata.conversation_id;
+    console.log(`[Webhook] Extracted conversation_id: ${convId}`);
+
     if (!convId) {
       console.error('[Webhook] Missing conversation_id in webhook payload');
       return NextResponse.json({ success: false, message: 'Missing conversation_id' }, { status: 400 });
@@ -98,10 +100,22 @@ export async function POST(request: NextRequest) {
         message: msg.message || ""
       }));
 
+      // Extract confirmed reservation details before building cleanedDetails
+      const confirmedDetailsRaw = dataResults.confirmed_reservation_details?.value || null;
+      let confirmedReservationDetails: Record<string, any> | null = null;
+      if (confirmedDetailsRaw) {
+        try {
+          confirmedReservationDetails = JSON.parse(confirmedDetailsRaw);
+        } catch {
+          confirmedReservationDetails = { raw: confirmedDetailsRaw };
+        }
+      }
+
       const cleanedDetails = {
         summary: analysis.transcript_summary || "",
         results: dataResults,
         transcript: cleanTranscript,
+        confirmed_reservation_details: confirmedReservationDetails,
         call_stats: {
           duration: metadata.call_duration_secs || 0,
           cost: metadata.cost || 0
