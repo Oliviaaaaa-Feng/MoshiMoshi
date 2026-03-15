@@ -10,6 +10,9 @@ import SwiftUI
 struct HistoryView: View {
     @ObservedObject var viewModel: ReservationViewModel
     @ObservedObject private var lm = LocalizationManager.shared
+    
+    // 1. Add Environment variable to observe app state
+    @Environment(\.scenePhase) var scenePhase
 
     @State private var showPastEvents = false
     @State private var statusFilter: ReservationStatus? = nil
@@ -95,6 +98,13 @@ struct HistoryView: View {
             .navigationBarTitleDisplayMode(.large)
             .onAppear {
                 viewModel.fetchUserHistory()
+            }
+            // 2. Add listener for when the app comes back to the foreground
+            .onChange(of: scenePhase) { newPhase in
+                if newPhase == .active {
+                    print("🔄 App became active. Forcing data refresh from database.")
+                    viewModel.fetchUserHistory(forceRefresh: true)
+                }
             }
         }
     }
