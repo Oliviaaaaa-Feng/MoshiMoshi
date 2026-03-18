@@ -96,10 +96,12 @@ export async function POST(request: NextRequest) {
       const analysis = rawData.analysis || {};
       const dataResults = analysis.data_collection_results || {};
       
-      const cleanTranscript = (rawData.transcript || []).map((msg: any) => ({
-        role: msg.role || "unknown",
-        message: msg.message || ""
-      }));
+      const cleanTranscript = (rawData.transcript || [])
+        .map((msg: any) => ({
+          role: msg.role || "unknown",
+          message: String(msg.message ?? "").trim(),
+        }))
+        .filter((msg: { message: string }) => msg.message.length > 0);
 
       const englishLines = await translateTranscriptToEnglish(cleanTranscript);
       const transcriptWithEnglish = cleanTranscript.map((msg: { role: string; message: string }, i: number) => ({

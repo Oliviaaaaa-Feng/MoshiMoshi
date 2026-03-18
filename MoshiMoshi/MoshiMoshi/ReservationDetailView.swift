@@ -457,10 +457,16 @@ struct CallHistoryExpandableCard: View {
                     }
                     .padding(.top, 8)
                     
-                    // MARK: - Transcript Chat List
+                    // MARK: - Transcript Chat List (skip empty lines)
                     VStack(alignment: .leading, spacing: 8) {
-                        if !transcript.isEmpty {
-                            ForEach(transcript) { msg in
+                        let visibleMessages = transcript.filter { msg in
+                            let raw = selectedLanguage == "Original"
+                                ? msg.message
+                                : (msg.messageEn?.isEmpty == false ? (msg.messageEn ?? "") : msg.message)
+                            return !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        }
+                        if !visibleMessages.isEmpty {
+                            ForEach(visibleMessages) { msg in
                                 let displayRole: String = {
                                     let rawRole = msg.role.lowercased()
                                     if rawRole == "user" {
