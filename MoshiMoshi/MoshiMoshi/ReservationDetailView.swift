@@ -428,13 +428,13 @@ struct CallHistoryExpandableCard: View {
                         }
                     }
                     
-                    // MARK: - Transcript Language Toggle
+                    // MARK: - Transcript: default English, optional original
                     HStack {
                         Image(systemName: "doc.plaintext")
                         Text("TRANSCRIPT")
                             .font(.subheadline.bold())
                         Spacer()
-                        
+
                         HStack(spacing: 0) {
                             Text("English")
                                 .font(.caption)
@@ -443,7 +443,7 @@ struct CallHistoryExpandableCard: View {
                                 .foregroundColor(selectedLanguage == "English" ? .white : .gray)
                                 .clipShape(Capsule())
                                 .onTapGesture { selectedLanguage = "English" }
-                            
+
                             Text("Original")
                                 .font(.caption)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -471,7 +471,13 @@ struct CallHistoryExpandableCard: View {
                                         return msg.role.capitalized
                                     }
                                 }()
-                                Text("**\(displayRole):** \(msg.message)")
+                                let bodyText: String = {
+                                    if selectedLanguage == "Original" {
+                                        return msg.message
+                                    }
+                                    return msg.messageEn?.isEmpty == false ? msg.messageEn! : msg.message
+                                }()
+                                Text("**\(displayRole):** \(bodyText)")
                                     .padding(.bottom, 4)
                             }
                         } else {

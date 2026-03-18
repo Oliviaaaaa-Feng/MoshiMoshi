@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { translateTranscriptToEnglish } from '@/lib/translate-transcript';
 
 export async function POST(request: NextRequest) {
   try {
@@ -100,6 +101,13 @@ export async function POST(request: NextRequest) {
         message: msg.message || ""
       }));
 
+      const englishLines = await translateTranscriptToEnglish(cleanTranscript);
+      const transcriptWithEnglish = cleanTranscript.map((msg: { role: string; message: string }, i: number) => ({
+        role: msg.role,
+        message: msg.message,
+        message_en: englishLines[i] ?? msg.message,
+      }));
+
       // Extract confirmed reservation details before building cleanedDetails
       const confirmedDetailsRaw = dataResults.confirmed_reservation_details?.value || null;
       let confirmedReservationDetails: Record<string, any> | null = null;
@@ -114,7 +122,7 @@ export async function POST(request: NextRequest) {
       const cleanedDetails = {
         summary: analysis.transcript_summary || "",
         results: dataResults,
-        transcript: cleanTranscript,
+        transcript: transcriptWithEnglish,
         confirmed_reservation_details: confirmedReservationDetails,
         call_stats: {
           duration: metadata.call_duration_secs || 0,
@@ -123,7 +131,7 @@ export async function POST(request: NextRequest) {
       };
 
       // Anti-phantom data mechanism: Ignore empty payloads to protect existing DB records
-      if (cleanTranscript.length === 0 && cleanedDetails.call_stats.duration === 0) {
+      if (transcriptWithEnglish.length === 0 && cleanedDetails.call_stats.duration === 0) {
         console.log(`[Webhook] Intercepted phantom empty data. Canceling DB updates.`);
         return NextResponse.json({ success: true, message: 'Ignored empty phantom payload' });
       }

@@ -79,10 +79,13 @@ struct ReservationData: Codable, Identifiable {
             let id = UUID()
             let role: String
             let message: String
-            
+            /// English translation from webhook (`message_en`); nil on older records
+            let messageEn: String?
+
             enum CodingKeys: String, CodingKey {
                 case role
                 case message
+                case messageEn = "message_en"
             }
         }
         
